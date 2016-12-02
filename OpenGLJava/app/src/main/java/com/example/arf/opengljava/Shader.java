@@ -80,7 +80,7 @@ public class Shader {
         Log.d("Shader", "Shader version "  + String.valueOf(status[0]));
         GLES30.glGetProgramiv(m_pID, GLES30.GL_LINK_STATUS, status, 0);
         if (status[0] == 0) {
-            GLES30.glGetShaderInfoLog(m_vsID);
+            Log.d("Shader", "Program InfoLog: " + GLES30.glGetProgramInfoLog(m_pID));
         }
         Log.d("Shader", "Link Status: " + String.valueOf(status[0]));
         GLES30.glGetShaderiv(m_vsID, GLES30.GL_COMPILE_STATUS, status, 0);
@@ -90,6 +90,9 @@ public class Shader {
         }
         GLES30.glGetShaderiv(m_fsID, GLES30.GL_COMPILE_STATUS, status, 0);
         Log.d("Shader", "Fragment Shader Compile Status: " + String.valueOf(status[0]));
+        if (status[0] == 0) {
+            Log.d("Shader", GLES30.glGetShaderInfoLog(m_fsID));
+        }
     }
 
 

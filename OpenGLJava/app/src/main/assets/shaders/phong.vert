@@ -1,4 +1,4 @@
-#version 310 es
+#version 300 es
 
 uniform mat4 uMat4PVM;   
 uniform mat3 uMat3Normal;

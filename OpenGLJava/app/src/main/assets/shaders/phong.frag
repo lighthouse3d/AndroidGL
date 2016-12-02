@@ -1,5 +1,6 @@
 #version 300 es
 
+precision mediump float;
 
 uniform vec4 uVec4Diffuse;
 uniform vec4 uVec4Specular;
@@ -33,7 +34,4 @@ void main() {
 
     vec4 dif = uVec4Diffuse * texture(uSampler2D, tc);
     colorOut = max(vec4(intensity, intensity, intensity, 1.0) * dif + spec , dif * vec4(uFloatAmbient, uFloatAmbient, uFloatAmbient, 1.0));
-    //colorOut = texture(uSampler2D, tc);
-    //colorOut = vec4(normal * 0.5 + 0.5, 1);
-    //colorOut = uVec4Diffuse;
 }

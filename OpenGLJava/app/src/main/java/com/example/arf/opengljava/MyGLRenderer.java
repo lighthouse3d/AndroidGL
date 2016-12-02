@@ -86,16 +86,10 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
 
         // Create a rotation for the triangle
 
-        // Use the following code to generate constant rotation.
-        // Leave this code out when using TouchEvents.
-        // long time = SystemClock.uptimeMillis() % 4000L;
-        // float mAngle = 0.090f * ((int) time);
-
-        //Matrix.setRotateM(m_RotationMatrix, 0, m_Angle, 0, 1.0f,0);
-
         // Combine the rotation matrix with the projection and camera view
         // Note that the mMVPMatrix factor *must be first* in order
         // for the matrix multiplication product to be correct.
+
         Matrix.multiplyMM(m_PVMMatrix, 0, m_PVMMatrix, 0, m_RotationMatrix, 0);
         Mat4 m = m_Model.getModelMatrix();
         float[] model = m.getMat();
@@ -119,6 +113,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         }
     }
 
+
     @Override
     public void onSurfaceChanged(GL10 unused, int width, int height) {
         // Adjust the viewport based on geometry changes,
@@ -133,9 +128,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         // this projection matrix is applied to object coordinates
         // in the onDrawFrame() method
         Matrix.perspectiveM(m_ProjectionMatrix, 0, 60, ratio, 1, 100);
-        //Matrix.frustumM(mProjectionMatrix, 0, -ratio, ratio, -1, 1, 3, 7);
-
-    }
+     }
 
 
     public void loadAssetsAndShaders(String model, String vertex, String fragment) {
