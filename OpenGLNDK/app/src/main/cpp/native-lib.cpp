@@ -193,14 +193,6 @@ Java_com_lighthouse3d_android_openglndk_GLES3JNILib_init(JNIEnv* env, jobject ob
 #ifdef __VSL_MODEL_LOADING__
     model.load("teapot.obj");
     LOGD("Teapot loaded");
- /*   model.addCubeMapTexture(0,
-                               "CM/CloudyHills_posx_512.png",
-                               "CM/CloudyHills_negx_512.png",
-                               "CM/CloudyHills_posy_512.png",
-                               "CM/CloudyHills_negy_512.png",
-                               "CM/CloudyHills_posz_512.png",
-                               "CM/CloudyHills_negz_512.png");
-*/
     model.addCubeMapTexture(0,
                             "CM/posx.jpg",
                             "CM/negx.jpg",
@@ -216,14 +208,7 @@ Java_com_lighthouse3d_android_openglndk_GLES3JNILib_init(JNIEnv* env, jobject ob
     plane3.addMeshes(plane0);
     plane4.addMeshes(plane0);
     plane5.addMeshes(plane0);
-/*
-    plane0.addTexture(0, "CM/CloudyHills_negy_512.png");
-    plane1.addTexture(0, "CM/CloudyHills_negz_512.png");
-    plane2.addTexture(0, "CM/CloudyHills_posz_512.png");
-    plane3.addTexture(0, "CM/CloudyHills_posy_512.png");
-    plane4.addTexture(0, "CM/CloudyHills_posx_512.png");
-    plane5.addTexture(0, "CM/CloudyHills_negx_512.png");
-*/
+
     plane0.addTexture(0, "CM/negy.jpg");
     plane1.addTexture(0, "CM/negz.jpg");
     plane2.addTexture(0, "CM/posz.jpg");
