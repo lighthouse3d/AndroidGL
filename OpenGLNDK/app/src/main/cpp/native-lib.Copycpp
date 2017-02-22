@@ -1,0 +1,310 @@
+#include <jni.h>
+#include <android/log.h>
+
+#include <string>
+#include <assimp/Importer.hpp>
+#include "AAIOSystem.h"
+#include "AALogStream.h"
+#include <android/asset_manager_jni.h>
+#include <assimp/scene.h>
+#include <assimp/DefaultLogger.hpp>
+#include <vslibs.h>
+
+
+static const char* kTAG = "native-lib.cpp";
+
+#define LOGD(...) \
+  ((void)__android_log_print(ANDROID_LOG_DEBUG, kTAG, __VA_ARGS__))
+
+
+static VSMathLib *vsml;
+static VSShaderLib shader;
+static VSModelLib model;
+static VSGeometryLib modelGrid, modelAxis;
+static VSSurfRevLib surfRev, pawn;
+static AAssetManager *mgr;
+
+static float startX;
+static float startY;
+static float currX;
+static float currY;
+static bool rotating;
+
+static const float SCALE_FACTOR = 0.001f;
+static float currDist, startDist, prevDist, prevScale = 1.0f;
+static bool scaling;
+
+static int m_Width;
+static int m_Height;
+
+
+void getArcBallVec(float x, float y, float *v) {
+
+    v[0] = x * 2.0f / m_Width - 1;
+    v[1] = -(y * 2.0f / m_Height - 1);
+    v[2] = 0.0f;
+
+    float op = v[0] * v[0] + v[1] * v[1];
+    if (op < 1.0)
+        v[2] = (float)sqrt(1.0f - op);
+    else
+        vsml->normalize(v);
+}
+
+
+void computeAngleAndAxisOfRotation(float *va, float *vb, float *angle, float *axis) {
+
+    *angle = acosf(fminf(1.0f, VSMathLib::dotProduct(va, vb)));
+    vsml->crossProduct(va, vb, axis);
+    axis[3] = 0;
+
+}
+
+
+void computeRotationMatrix() {
+
+    if (currX != startX || currY != startY) {
+        float va[3], vb[3], axisCamCoord[4], axisWorldCoord[4];
+        float angle;
+        getArcBallVec(currX, currY, vb);
+        getArcBallVec(startX, startY, va);
+        computeAngleAndAxisOfRotation(va, vb, &angle, axisCamCoord);
+
+        // cam space to world space (pre trackball rotation)
+        vsml->loadIdentity(VSMathLib::AUX0);
+        vsml->multMatrix(VSMathLib::AUX0, vsml->get(VSMathLib::VIEW));
+        vsml->multMatrix(VSMathLib::AUX0, vsml->get(VSMathLib::AUX1));
+        vsml->invert(VSMathLib::AUX0);
+        vsml->multMatrixPoint(VSMathLib::AUX0, axisCamCoord, axisWorldCoord);
+        vsml->loadIdentity(VSMathLib::AUX0);
+
+        vsml->rotate(VSMathLib::AUX1, angle * 180 / 3.1415f, axisWorldCoord[0], axisWorldCoord[1],
+                     axisWorldCoord[2]);
+        vsml->loadMatrix(VSMathLib::AUX2, vsml->get(VSMathLib::AUX0));
+        vsml->multMatrix(VSMathLib::AUX2, vsml->get(VSMathLib::AUX1));
+        startX = currX;
+        startY = currY;
+    }
+}
+
+
+void computeScaleMatrix() {
+
+    if (currDist != prevDist) {
+        float scale = (currDist - startDist) * SCALE_FACTOR;
+        if (prevScale + scale >= 0.1) {
+            vsml->loadIdentity(VSMathLib::AUX3);
+            vsml->scale(VSMathLib::AUX3, prevScale + scale, prevScale + scale, prevScale + scale);
+        }
+        prevDist = currDist;
+
+    }
+}
+
+
+GLuint setupShaders() {
+
+    // Shader for models
+
+    shader.init();
+    shader.loadShader(VSShaderLib::VERTEX_SHADER, "shaders/pixeldirdifambspec.vert");
+    shader.loadShader(VSShaderLib::FRAGMENT_SHADER, "shaders/pixeldirdifambspec.frag");
+
+    // set semantics for the shader variables
+    shader.setVertexAttribName(VSShaderLib::VERTEX_COORD_ATTRIB, "position");
+    shader.setVertexAttribName(VSShaderLib::NORMAL_ATTRIB,"normal");
+    shader.setVertexAttribName(VSShaderLib::TEXTURE_COORD_ATTRIB, "texCoord");
+
+
+    shader.prepareProgram();
+
+    float f[3] = {-1.0f, 1.0f, 1.0f};
+    shader.setUniform("lightDir", f);
+    shader.setUniform("texUnit", 0);
+
+     // add sampler uniforms
+    shader.setUniform("texUnit", 0);
+
+#ifdef __ANDROID_API__
+    __android_log_print(ANDROID_LOG_DEBUG, "InfoLog", "\n%s", shader.getAllInfoLogs().c_str());
+#else
+    printf("InfoLog\n%s\n\n", shader.getAllInfoLogs().c_str());
+#endif
+    return(1);
+}
+
+
+void initVSL() {
+
+    VSResourceLib::setMaterialBlockName("Material");
+
+//	Init VSML
+    vsml = VSMathLib::getInstance();
+    vsml->setUniformBlockName("Matrices");
+    vsml->setUniformName(VSMathLib::PROJ_VIEW_MODEL, "projModelViewMatrix");
+    vsml->setUniformName(VSMathLib::NORMAL, "normalMatrix");
+    vsml->setUniformName(VSMathLib::VIEW_MODEL, "modelViewMatrix");
+    vsml->setUniformName(VSMathLib::MODEL, "modelMatrix");
+    vsml->setUniformName(VSMathLib::VIEW, "viewMatrix");
+    vsml->setUniformName(VSMathLib::PROJECTION, "projectionMatrix");
+
+    vsml->loadIdentity(VSMathLib::AUX1);
+    vsml->loadIdentity(VSMathLib::AUX2);
+    vsml->loadIdentity(VSMathLib::AUX3);
+
+    VSGeometryLib::init();
+}
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_init(JNIEnv* env, jobject obj, jobject assetManager) {
+
+    Assimp::Importer *imp = new Assimp::Importer();
+    mgr = AAssetManager_fromJava(env, assetManager);
+    AAIOSystem* ioSystem = new AAIOSystem(mgr);
+    imp->SetIOHandler(ioSystem);
+#ifdef __VSL_MODEL_LOADING__
+    VSModelLib::SetImporter(imp);
+#endif
+    VSShaderLib::SetAssetManager(mgr);
+
+    setupShaders();
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+    initVSL();
+
+#ifdef __VSL_MODEL_LOADING__
+    model.load("Teapot.3ds");
+#endif
+    modelGrid.createGrid(VSGeometryLib::Y, 5, 10);
+    float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
+    modelGrid.setColor(VSResourceLib::EMISSIVE, gray);
+    modelAxis.createAxis(3.0f, 0.025f);
+
+    surfRev.createTorus(1,2,16,16);
+    pawn.createPawn();
+
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_resize(JNIEnv* env, jobject obj, jint width, jint height) {
+
+    m_Width = width;
+    m_Height = height;
+    float ratio = (width * 1.0f)/height;
+    glViewport(0,0, width, height);
+
+    vsml->loadIdentity(VSMathLib::PROJECTION);
+    vsml->perspective(60.0f, ratio, 0.1f, 100.0f);
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_step(JNIEnv* env, jobject obj) {
+
+    float lightDir[4] = {-1.0f, 1.0f, 1.0f, 0.0f};
+    float lightDirEyeCoord[4];
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    vsml->loadIdentity(VSMathLib::VIEW);
+    vsml->loadIdentity(VSMathLib::MODEL);
+    // set camera
+    vsml->lookAt(0, 0, 5, 0,0,0, 0,1,0);
+
+    if (rotating) {
+        computeRotationMatrix();
+    }
+    if (scaling) {
+        computeScaleMatrix();
+    }
+    vsml->multMatrix(VSMathLib::VIEW, vsml->get(VSMathLib::AUX2));
+    vsml->multMatrix(VSMathLib::VIEW, vsml->get(VSMathLib::AUX3));
+
+    vsml->multMatrixPoint(VSMathLib::NORMAL_VIEW, lightDir, lightDirEyeCoord);
+    vsml->normalize(lightDirEyeCoord);
+    shader.setUniform("lightDir", lightDirEyeCoord);
+    //	glBeginQuery(GL_PRIMITIVES_GENERATED, counterQ);
+
+    // use our shader
+    glUseProgram(shader.getProgramIndex());
+
+    // render stuff
+#ifdef __VSL_MODEL_LOADING__
+    model.render();
+#endif
+    pawn.render();
+    surfRev.render();
+    modelGrid.render();
+    modelAxis.render();
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_startRotating(JNIEnv* env, jobject obj, float x, float y) {
+
+    currX = x;
+    currY = y;
+    startX = x;
+    startY = y;
+    rotating = true;
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_stopRotating(JNIEnv* env, jobject obj) {
+
+    rotating = false;
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_updateRotation(JNIEnv* env, jobject obj, float newX, float newY) {
+
+    currX = newX;
+    currY = newY;
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_startScaling(JNIEnv* env, jobject obj, float dist) {
+
+    currDist = dist;
+    startDist = dist;
+    prevDist = dist;
+    scaling = true;
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_stopScaling(JNIEnv* env, jobject obj) {
+
+    LOGD("stopScaling");
+    scaling = false;
+    prevScale += (currDist - startDist) * SCALE_FACTOR;
+    if (prevScale < 0.1f)
+        prevScale = 0.1f;
+    startDist = currDist;
+}
+
+
+extern "C"
+void
+Java_com_example_arf_cpptest_GLES3JNILib_updateScale(JNIEnv* env, jobject obj, float dist) {
+
+    currDist = dist;
+
+}
+

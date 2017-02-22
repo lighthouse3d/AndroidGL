@@ -32,7 +32,7 @@
 				1,0, 1,1, 0,1, 0,0, 1,0, 1,1],
 			"material" : 
 				{"texture" : "crate.jpg" ,
-				 "diffuse" : [0.827451,0.792157,0.772549,1],
+				 "diffuse" : [1.0,1.0,1.0,1],
 				 "specular" : [0,0,0,1],
 				 "shininess" : 128},
 			"boundingBox" : 
